@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Plant Monitoring System | ESP32 IoT Dashboard</title>
+  <meta name="description" content="Stunning real-time 3D dashboard for ESP32 plant monitoring. Track soil moisture, water tank levels, room temperature, and interactive sensors in a glassmorphic IoT terminal.">
+  
+  <!-- Style sheets -->
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Font Awesome Icons for premium style -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <div class="container">
+    
+    <!-- HEADER PANEL -->
+    <header class="glass-panel header-panel">
+      <div class="brand-section">
+        <div class="logo-glowing-ring">
+          <i class="fa-solid fa-seedling"></i>
+        </div>
+        <div class="brand-title">
+          <h1>BioSphera IoT</h1>
+          <p>ESP32 Intelligent Plant Sentinel</p>
+        </div>
+      </div>
+      
+      <div class="header-widgets">
+        <!-- Live Clock widget -->
+        <div class="widget-clock">
+          <span class="time" id="liveClock">11:07:54 AM</span>
+          <span class="date-loc" id="liveDate">May 27, 2026 • Living Room</span>
+        </div>
+        
+        <!-- Connection State and Mode Selectors -->
+        <div class="connection-wrapper">
+          <div class="mode-toggle-container">
+            <button class="mode-btn active" id="btnLiveMode" onclick="setDashboardMode('live')">
+              <i class="fa-solid fa-wifi"></i> Live ESP32
+            </button>
+            <button class="mode-btn" id="btnDemoMode" onclick="setDashboardMode('demo')">
+              <i class="fa-solid fa-gamepad"></i> Sim Mode
+            </button>
+          </div>
+          <span id="connectionStatus" class="status live">LIVE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- INTERACTIVE SIMULATOR SLIDERS PANEL (Expands in demo mode) -->
+    <section class="glass-panel simulator-panel" id="simulatorPanel">
+      <div class="card-content simulator-content">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Interactive Simulator Console</h2>
+            <span>Override live telemetry to test full responsive UI states</span>
+          </div>
+          <div class="card-icon" style="color: #60a5fa;">
+            <i class="fa-solid fa-sliders"></i>
+          </div>
+        </div>
+        
+        <div class="simulator-grid">
+          <!-- Soil Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span class="name">Soil Moisture</span>
+              <span class="value" id="simSoilVal">45%</span>
+            </div>
+            <input type="range" class="custom-range-slider soil-slider" id="inputSimSoil" min="0" max="100" value="45" oninput="updateSimState('soil', this.value)">
+          </div>
+          
+          <!-- Water level Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span class="name">Water Tank Level</span>
+              <span class="value" id="simWaterVal">72%</span>
+            </div>
+            <input type="range" class="custom-range-slider water-slider" id="inputSimWater" min="0" max="100" value="72" oninput="updateSimState('water', this.value)">
+          </div>
+          
+          <!-- Temp Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span class="name">Temperature</span>
+              <span class="value" id="simTempVal">24.5°C</span>
+            </div>
+            <input type="range" class="custom-range-slider" id="inputSimTemp" min="0" max="50" step="0.5" value="24.5" oninput="updateSimState('temperature', this.value)">
+          </div>
+          
+          <!-- Humidity Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span class="name">Humidity</span>
+              <span class="value" id="simHumVal">55%</span>
+            </div>
+            <input type="range" class="custom-range-slider" id="inputSimHum" min="10" max="100" value="55" oninput="updateSimState('humidity', this.value)">
+          </div>
+          
+          <!-- Binary Toggles -->
+          <div class="slider-group">
+            <span class="slider-label-row"><span class="name">Hardware Interrupts</span></span>
+            <div class="simulator-binary-buttons">
+              <button class="sim-btn-pill" id="btnSimTouch" onclick="toggleSimBinary('touch')">
+                <i class="fa-solid fa-hand-pointer"></i> Touch (0)
+              </button>
+              <button class="sim-btn-pill" id="btnSimIR" onclick="toggleSimBinary('ir')">
+                <i class="fa-solid fa-eye"></i> IR (0)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD CORE GRID -->
+    <main class="dashboard-grid">
+      
+      <!-- COLUMN 1: VISUAL PLANT CENTERPIECE -->
+      <section class="glass-panel tiltable plant-card-wrapper" id="plantCard">
+        <div class="card-content">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Sentient Flora</h2>
+              <span id="lastUpdate">Waiting for data...</span>
+            </div>
+            <div class="card-icon" style="color: var(--plant-leaf-color);">
+              <i class="fa-solid fa-leaf"></i>
+            </div>
+          </div>
+          
+          <!-- The 3D Swaying Plant Container -->
+          <div class="plant-view-container">
+            <div class="plant-3d-glow-backdrop" id="plantGlowBackdrop"></div>
+            <div class="proximity-radar-radial" id="radarOverlay"></div>
+            <div class="touch-ripple" id="touchRipple"></div>
+            
+            <div class="plant-svg-container" id="plantSvgWrapper">
+              <!-- Custom layered SVG plant that reacts to states -->
+              <svg id="virtual-plant" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+                <!-- Pot Shadow -->
+                <ellipse cx="100" cy="215" rx="42" ry="7" fill="rgba(0,0,0,0.4)" />
+                
+                <!-- The Pot (Stays stable, doesn't sway) -->
+                <path d="M65,185 L135,185 L125,215 L75,215 Z" fill="#2d3345" stroke="#48526e" stroke-width="2.5" stroke-linejoin="round" />
+                <path d="M60,175 L140,175 L138,185 L62,185 Z" fill="#3c455c" stroke="#48526e" stroke-width="2.5" stroke-linejoin="round" />
+                <ellipse cx="100" cy="180" rx="36" ry="3" fill="#1b202e" />
+                
+                <!-- Stems, buds, and leaves all sway organically together around pot base (100, 180) -->
+                <g class="sway-group" style="transform-origin: 100px 180px;">
+                  <!-- Central Stem -->
+                  <path class="stem" d="M100,180 Q102,130 96,80" fill="none" stroke="#2da154" stroke-width="5" stroke-linecap="round" />
+                  <!-- Left Stem branch -->
+                  <path class="stem" d="M100,140 Q80,120 70,105" fill="none" stroke="#2da154" stroke-width="3.5" stroke-linecap="round" />
+                  <!-- Right Stem branch -->
+                  <path class="stem" d="M98,125 Q115,108 128,95" fill="none" stroke="#2da154" stroke-width="3.5" stroke-linecap="round" />
+                  
+                  <!-- Flower bud (sits atop central stem) -->
+                  <g class="flower-group" style="transform-origin: 96px 80px;">
+                    <circle class="flower-bud" cx="96" cy="74" r="9" />
+                    <circle cx="96" cy="74" r="4" fill="#ffb0c5" />
+                  </g>
+                  
+                  <!-- Leaves (Rotate around their specific stem attachment pivot points) -->
+                  <!-- Left Low Leaf -->
+                  <g class="leaf-group leaf-left" style="transform-origin: 99px 150px;">
+                    <path class="leaf-main" d="M99,150 Q55,145 42,160 Q65,170 99,150 Z" />
+                  </g>
+                  <!-- Left Upper Leaf -->
+                  <g class="leaf-group leaf-left" style="transform-origin: 70px 105px;">
+                    <path class="leaf-main" d="M70,105 Q40,90 28,105 Q55,120 70,105 Z" />
+                  </g>
+                  <!-- Right Low Leaf -->
+                  <g class="leaf-group leaf-right" style="transform-origin: 101px 140px;">
+                    <path class="leaf-main" d="M101,140 Q145,140 156,155 Q130,162 101,140 Z" />
+                  </g>
+                  <!-- Right Upper Leaf -->
+                  <g class="leaf-group leaf-right" style="transform-origin: 128px 95px;">
+                    <path class="leaf-main" d="M128,95 Q155,85 168,100 Q140,112 128,95 Z" />
+                  </g>
+                  <!-- Central upper left leaf -->
+                  <g class="leaf-group leaf-left" style="transform-origin: 96px 95px;">
+                    <path class="leaf-main" d="M96,95 Q82,75 75,60 Q95,75 96,95 Z" />
+                  </g>
+                  <!-- Central upper right leaf -->
+                  <g class="leaf-group leaf-right" style="transform-origin: 96px 95px;">
+                    <path class="leaf-main" d="M96,95 Q112,75 119,60 Q100,75 96,95 Z" />
+                  </g>
+                </g>
+            </div>
+          </div>
+          
+          <div class="plant-interactive-overlay">
+            <div class="sensor-bubble-list">
+              <div class="sensor-bubble" id="bubbleTouch">
+                <span class="indicator-light"></span> Touch State
+              </div>
+              <div class="sensor-bubble" id="bubbleIR">
+                <span class="indicator-light"></span> Proximity
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- COLUMN 2: SOIL MOISTURE CARD -->
+      <section class="glass-panel tiltable" id="soilCard">
+        <div class="card-content">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Hydro-Soil Matrix</h2>
+              <span>Ground water telemetry</span>
+            </div>
+            <div class="card-icon" style="color: var(--color-soil);">
+              <i class="fa-solid fa-droplet"></i>
+            </div>
+          </div>
+          
+          <!-- Soil Gauge -->
+          <div class="soil-gauge-container">
+            <div class="radial-progress-wrapper">
+              <svg>
+                <circle class="bg-ring" cx="65" cy="65" r="60"></circle>
+                <circle class="progress-fill" id="soilRing" cx="65" cy="65" r="60"></circle>
+              </svg>
+              <div class="radial-value-box">
+                <span class="number" id="soil">--</span>
+                <span class="label">Moisture</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="soil-details-panel">
+            <div class="gauge-detail-row">
+              <span class="label"><i class="fa-solid fa-chart-line"></i> Matrix Health</span>
+              <span class="value" id="soilStatus">--</span>
+            </div>
+            
+            <div class="gauge-detail-row">
+              <span class="label"><i class="fa-solid fa-water"></i> Irrigation Motor</span>
+              <div class="pump-active-badge" id="pumpBadge">
+                <i class="fa-solid fa-fan pump-fan"></i>
+                <span class="value" id="pump">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- COLUMN 3: TANK LEVEL CARD -->
+      <section class="glass-panel tiltable" id="tankCard">
+        <div class="card-content">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Reservoir Volume</h2>
+              <span>Source tank diagnostics</span>
+            </div>
+            <div class="card-icon" style="color: var(--color-water);">
+              <i class="fa-solid fa-glass-water"></i>
+            </div>
+          </div>
+          
+          <div class="tank-visualizer-container">
+            <div class="glass-tube-container">
+              <div class="glass-tube-liquid" id="tankLiquid" style="height: 0%;">
+                <div class="liquid-wave"></div>
+                <div class="liquid-wave-secondary"></div>
+              </div>
+              <div class="tube-measure-lines">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="soil-details-panel">
+            <div class="gauge-detail-row">
+              <span class="label"><i class="fa-solid fa-percent"></i> Capacity</span>
+              <span class="value" id="water">--</span>
+            </div>
+            
+            <div class="gauge-detail-row">
+              <span class="label"><i class="fa-solid fa-circle-exclamation"></i> Reserve Status</span>
+              <span class="value" id="tankStatus">--</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- COLUMN 4: TEMPERATURE & HUMIDITY DIALS -->
+      <section class="glass-panel tiltable" id="envCard">
+        <div class="card-content">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Atmospheric Sentinel</h2>
+              <span>Ambient environment readings</span>
+            </div>
+            <div class="card-icon" style="color: var(--color-temp);">
+              <i class="fa-solid fa-wind"></i>
+            </div>
+          </div>
+          
+          <div class="env-dials-container">
+            <!-- Temperature Dial -->
+            <div class="env-dial-row">
+              <div class="env-circle-gauge temp">
+                <svg>
+                  <circle class="bg-ring" cx="40" cy="40" r="35"></circle>
+                  <circle class="progress-fill" id="tempRing" cx="40" cy="40" r="35"></circle>
+                </svg>
+                <div class="env-circle-value" id="temperature">--</div>
+              </div>
+              <div class="env-meta-box">
+                <span class="title">Temperature</span>
+                <span class="desc">Heat dissipation rating</span>
+                <span class="status-pill comfortable" id="tempPill">Comfortable</span>
+              </div>
+            </div>
+            
+            <!-- Humidity Dial -->
+            <div class="env-dial-row">
+              <div class="env-circle-gauge humidity">
+                <svg>
+                  <circle class="bg-ring" cx="40" cy="40" r="35"></circle>
+                  <circle class="progress-fill" id="humRing" cx="40" cy="40" r="35"></circle>
+                </svg>
+                <div class="env-circle-value" id="humidity">--</div>
+              </div>
+              <div class="env-meta-box">
+                <span class="title">Humidity</span>
+                <span class="desc">Water vapor suspension</span>
+                <span class="status-pill comfortable" id="humPill">Normal</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- COLUMN 5: SENSOR INTERRUPT DETAILS -->
+      <section class="glass-panel tiltable" id="peripheralCard">
+        <div class="card-content">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2>Peripheral Bus</h2>
+              <span>Hardware triggers & alarms</span>
+            </div>
+            <div class="card-icon" style="color: #a855f7;">
+              <i class="fa-solid fa-microchip"></i>
+            </div>
+          </div>
+          
+          <div class="binary-sensors-grid">
+            <!-- Touch panel -->
+            <div class="binary-sensor-panel" id="panelTouch">
+              <div class="sensor-visual-field touch-glow" id="visualTouch">
+                <i class="fa-solid fa-hand-pointer"></i>
+              </div>
+              <div class="sensor-info-block">
+                <span class="name">Cap Touch</span>
+                <span class="status-label" id="touch">--</span>
+              </div>
+            </div>
+            
+            <!-- Proximity panel -->
+            <div class="binary-sensor-panel" id="panelIR">
+              <div class="sensor-visual-field proximity-radar" id="visualIR">
+                <i class="fa-solid fa-users-viewfinder"></i>
+              </div>
+              <div class="sensor-info-block">
+                <span class="name">Proximity IR</span>
+                <span class="status-label" id="ir">--</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="soil-details-panel">
+            <div class="gauge-detail-row">
+              <span class="label"><i class="fa-solid fa-volume-high"></i> Synthesized Audio</span>
+              <button class="interactive-action-btn" id="btnTestBuzzer" onclick="testBuzzer()">
+                <i class="fa-solid fa-volume-low"></i> Test Buzz
+              </button>
+            </div>
+            
+            <div class="gauge-detail-row" style="margin-top: 0.5rem; border-color: rgba(239, 68, 68, 0.15); background: rgba(239, 68, 68, 0.03);">
+              <span class="label" style="color: #f87171;"><i class="fa-solid fa-triangle-exclamation"></i> Emergency: <span id="emergency" style="font-weight: 700;">NORMAL</span></span>
+              <button class="interactive-action-btn" id="emergencyBtn" onclick="toggleEmergency()" style="background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); font-size: 0.75rem; padding: 6px 12px; border-radius: 8px;">
+                Emergency Shutdown
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+    </main>
+
+    <!-- SECTION: AI BIOSPLERE CO-PILOT ADVISOR -->
+    <section class="glass-panel ai-advisor-panel" id="aiAdvisorCard" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
+      <div class="card-content" style="padding: 1.8rem; display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <!-- Header -->
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2><i class="fa-solid fa-brain" style="color: #60a5fa; margin-right: 0.5rem;"></i> AI Botanical Co-Pilot</h2>
+            <span>Biosphera Edge-AI Expert Diagnostic Engine</span>
+          </div>
+          <div class="card-icon" style="color: #60a5fa; background: rgba(96, 165, 250, 0.1);">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </div>
+        </div>
+        
+        <!-- Main content: 3 Columns Grid -->
+        <div class="ai-columns-grid">
+          
+          <!-- Column A: Real-Time Diagnostic Feed -->
+          <div class="ai-col-diagnostic">
+            <h3 class="ai-sub-title"><i class="fa-solid fa-heart-pulse"></i> Telemetry Analysis</h3>
+            
+            <div class="ai-diagnostic-bubble" id="aiDiagnosisText">
+              Biosphera AI Core evaluating plant vitals. Analyzing ground soil moisture, climate parameters, and reservoir bounds...
+            </div>
+            
+            <div class="ai-suitability-panel">
+              <span class="suitability-label">Optimal Plant Matches for Current Vitals:</span>
+              <div class="suitability-tags" id="aiSuitablePlants">
+                <!-- Appended dynamically in JS -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- Column B: Predictive Diagnostics & Fault Warnings -->
+          <div class="ai-col-predictive">
+            <h3 class="ai-sub-title"><i class="fa-solid fa-bolt"></i> Prognostics & Vitals</h3>
+            
+            <!-- Predicted Watering Countdown -->
+            <div class="ai-metric-row">
+              <div class="metric-icon"><i class="fa-solid fa-droplet"></i></div>
+              <div class="metric-info">
+                <span class="label">Next Watering Projection</span>
+                <span class="value" id="aiWateringPrediction">Analyzing drying slope...</span>
+              </div>
+            </div>
+            
+            <!-- Stability Vectors -->
+            <div class="ai-metric-row">
+              <div class="metric-icon"><i class="fa-solid fa-chart-line"></i></div>
+              <div class="metric-info">
+                <span class="label">Soil Drying Vector</span>
+                <span class="value" id="aiMoistureTrend">Calculating trend...</span>
+              </div>
+            </div>
+            
+            <!-- Fault Diagnostic Warnings list -->
+            <div class="ai-faults-panel">
+              <span class="label">System Safety Fault Matrix:</span>
+              <ul class="fault-list" id="aiFaultList">
+                <!-- Appended dynamically in JS -->
+              </ul>
+            </div>
+          </div>
+          
+          <!-- Column C: AI Chat Botanical Assistant -->
+          <div class="ai-col-chat">
+            <h3 class="ai-sub-title"><i class="fa-solid fa-comments"></i> Consult Botanical Core</h3>
+            
+            <div class="chat-container">
+              <div class="chat-feed" id="aiChatFeed">
+                <div class="chat-bubble ai">
+                  Greetings! I am the Biosphera Edge-AI Core. I compile real-time telemetry datasets (soil: --%, water: --%, temp: --°C) to keep your plant nursery thriving. Ask me about wait states, suitabilities, or system safety triggers!
+                </div>
+              </div>
+              
+              <!-- Fast Q chips -->
+              <div class="chat-preset-chips">
+                <button class="chip-btn" onclick="sendChatQuestion('Is my plant healthy?')">Vitals Check</button>
+                <button class="chip-btn" onclick="sendChatQuestion('What does the WAIT status mean?')">What is WAIT?</button>
+                <button class="chip-btn" onclick="sendChatQuestion('Which plants can I grow right now?')">Plant Guide</button>
+              </div>
+              
+              <!-- Query input -->
+              <div class="chat-input-row">
+                <input type="text" class="chat-query-input" id="chatInput" placeholder="Ask Botanical AI..." onkeydown="if(event.key === 'Enter') sendCustomChatQuery()">
+                <button class="chat-send-btn" onclick="sendCustomChatQuery()">
+                  <i class="fa-solid fa-paper-plane"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- BOTTOM CONTROLS: EVENT LOG FEED & CARE SCHEDULE -->
+    <section class="bottom-controls-section">
+      <!-- Activity event log feed -->
+      <div class="glass-panel feed-panel">
+        <div class="card-content" style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; justify-content: space-between; gap: 0.8rem;">
+          <div class="card-header" style="margin-bottom: 0px;">
+            <div class="card-title-group">
+              <h2>Activity Feed & Diagnostics</h2>
+              <span>Real-time system transaction history</span>
+            </div>
+            <button class="interactive-action-btn" onclick="clearConsoleLog()" style="padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; background: rgba(255,255,255,0.05); box-shadow: none; color: var(--text-muted);" title="Clear history feed">
+              <i class="fa-solid fa-trash-can"></i> Clear Feed
+            </button>
+          </div>
+          
+          <div class="feed-body" id="consoleLog">
+            <!-- Items will be appended here as gorgeous notification widgets -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Care schedule tracker -->
+      <div class="glass-panel tracker-panel">
+        <div class="card-header" style="margin-bottom: 0.5rem;">
+          <div class="card-title-group">
+            <h2>Horticultural Scheduler</h2>
+            <span>Synchronized sensor triggers</span>
+          </div>
+        </div>
+        
+        <div class="care-countdown-widget">
+          <div class="countdown-visual">
+            <i class="fa-solid fa-hourglass-half"></i>
+            <div class="countdown-radial-ring">
+              <svg viewBox="0 0 60 60">
+                <circle cx="30" cy="30" r="27"></circle>
+                <circle class="fill" id="countdownFill" cx="30" cy="30" r="27"></circle>
+              </svg>
+            </div>
+          </div>
+          <div class="countdown-details">
+            <span class="label">Next Sensor Sweep in</span>
+            <span class="countdown-number" id="countdownSec">1.0 seconds</span>
+          </div>
+        </div>
+        
+        <div class="soil-details-panel">
+          <div class="gauge-detail-row" style="margin-top: 0.5rem; padding: 0.5rem 0.8rem;">
+            <span class="label" style="font-size: 0.75rem;"><i class="fa-solid fa-network-wired"></i> Remote IP</span>
+            <span class="value" style="font-size: 0.75rem; font-family: var(--font-mono); color: #60a5fa;">192.168.4.1</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+  </div>
+
+  <!-- Javascript Logic bundle -->
+  <script src="app.js"></script>
+</body>
+</html>
